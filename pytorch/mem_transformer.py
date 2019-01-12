@@ -7,6 +7,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import t3nsor as t3
 
 sys.path.append('utils')
 from proj_adaptive_softmax import ProjectedAdaptiveLogSoftmax
@@ -67,7 +68,7 @@ class PositionwiseFF(nn.Module):
         return output
 
 class MultiHeadAttn(nn.Module):
-    def __init__(self, n_head, d_model, d_head, dropout, dropatt=0, 
+    def __init__(self, n_head, d_model, d_head, dropout, dropatt=0,
                  pre_lnorm=False):
         super(MultiHeadAttn, self).__init__()
 
@@ -380,7 +381,7 @@ class DecoderLayer(nn.Module):
         super(DecoderLayer, self).__init__()
 
         self.dec_attn = MultiHeadAttn(n_head, d_model, d_head, dropout, **kwargs)
-        self.pos_ff = PositionwiseFF(d_model, d_inner, dropout, 
+        self.pos_ff = PositionwiseFF(d_model, d_inner, dropout,
                                      pre_lnorm=kwargs.get('pre_lnorm'))
 
     def forward(self, dec_inp, dec_attn_mask=None, mems=None):
@@ -398,7 +399,7 @@ class RelLearnableDecoderLayer(nn.Module):
 
         self.dec_attn = RelLearnableMultiHeadAttn(n_head, d_model, d_head, dropout,
                                          **kwargs)
-        self.pos_ff = PositionwiseFF(d_model, d_inner, dropout, 
+        self.pos_ff = PositionwiseFF(d_model, d_inner, dropout,
                                      pre_lnorm=kwargs.get('pre_lnorm'))
 
     def forward(self, dec_inp, r_emb, r_w_bias, r_bias, dec_attn_mask=None, mems=None):
@@ -417,7 +418,7 @@ class RelPartialLearnableDecoderLayer(nn.Module):
 
         self.dec_attn = RelPartialLearnableMultiHeadAttn(n_head, d_model,
                             d_head, dropout, **kwargs)
-        self.pos_ff = PositionwiseFF(d_model, d_inner, dropout, 
+        self.pos_ff = PositionwiseFF(d_model, d_inner, dropout,
                                      pre_lnorm=kwargs.get('pre_lnorm'))
 
     def forward(self, dec_inp, r, r_w_bias, r_r_bias, dec_attn_mask=None, mems=None):
@@ -431,8 +432,8 @@ class RelPartialLearnableDecoderLayer(nn.Module):
 
 
 class AdaptiveEmbedding(nn.Module):
-    def __init__(self, n_token, d_embed, d_proj, cutoffs, div_val=1, 
-                 sample_softmax=False):
+    def __init__(self, n_token, d_embed, d_proj, cutoffs, div_val=1,
+                 sample_softmax=False, tt_emb=-1, tt_rank=32):
         super(AdaptiveEmbedding, self).__init__()
 
         self.n_token = n_token
@@ -449,9 +450,21 @@ class AdaptiveEmbedding(nn.Module):
         self.emb_layers = nn.ModuleList()
         self.emb_projs = nn.ParameterList()
         if div_val == 1:
-            self.emb_layers.append(
-                nn.Embedding(n_token, d_embed, sparse=sample_softmax>0)
-            )
+            if tt_emb > 0:
+                self.emb_layers.append(
+                    t3.TTEmbedding(
+                        voc_size=n_tokens,
+                        emb_size=d_embed,
+                        auto_shapes=True,
+                        d=tt_emb,
+                        tt_rank=tt_rank,
+                        padding_idx=None
+                    )
+                )
+            else:
+                self.emb_layers.append(
+                    nn.Embedding(n_token, d_embed, sparse=sample_softmax>0)
+                )
             if d_proj != d_embed:
                 self.emb_projs.append(nn.Parameter(torch.Tensor(d_proj, d_embed)))
         else:
@@ -469,7 +482,7 @@ class AdaptiveEmbedding(nn.Module):
         else:
             param = next(self.parameters())
             inp_flat = inp.view(-1)
-            emb_flat = torch.zeros([inp_flat.size(0), self.d_proj], 
+            emb_flat = torch.zeros([inp_flat.size(0), self.d_proj],
                 dtype=param.dtype, device=param.device)
             for i in range(len(self.cutoffs)):
                 l_idx, r_idx = self.cutoff_ends[i], self.cutoff_ends[i + 1]
@@ -494,12 +507,12 @@ class AdaptiveEmbedding(nn.Module):
 
 class MemTransformerLM(nn.Module):
     def __init__(self, n_token, n_layer, n_head, d_model, d_head, d_inner,
-                 dropout, dropatt, tie_weight=True, d_embed=None, 
+                 dropout, dropatt, tie_weight=True, d_embed=None,
                  div_val=1, tie_projs=[False], pre_lnorm=False,
-                 tgt_len=None, ext_len=None, mem_len=None, 
+                 tgt_len=None, ext_len=None, mem_len=None,
                  cutoffs=[], adapt_inp=False,
-                 same_length=False, attn_type=0, clamp_len=-1, 
-                 sample_softmax=-1):
+                 same_length=False, attn_type=0, clamp_len=-1,
+                 sample_softmax=-1, tt_emb=-1, tt_rank=32):
         super(MemTransformerLM, self).__init__()
         self.n_token = n_token
 
@@ -509,8 +522,10 @@ class MemTransformerLM(nn.Module):
         self.n_head = n_head
         self.d_head = d_head
 
-        self.word_emb = AdaptiveEmbedding(n_token, d_embed, d_model, cutoffs, 
-                                          div_val=div_val)
+        self.word_emb = AdaptiveEmbedding(
+            n_token, d_embed, d_model, cutoffs,
+            div_val=div_val, tt_emb=tt_emb, tt_rank=tt_rank
+        )
 
         self.drop = nn.Dropout(dropout)
 
@@ -559,12 +574,17 @@ class MemTransformerLM(nn.Module):
 
         # use adaptive softmax (including standard softmax)
         else:
-            self.crit = ProjectedAdaptiveLogSoftmax(n_token, d_embed, d_model, 
+            self.crit = ProjectedAdaptiveLogSoftmax(n_token, d_embed, d_model,
                                                     cutoffs, div_val=div_val)
 
             if tie_weight:
                 for i in range(len(self.crit.out_layers)):
-                    self.crit.out_layers[i].weight = self.word_emb.emb_layers[i].weight
+                    try:
+                        self.crit.out_layers[i].weight = self.word_emb.emb_layers[i].weight
+                    except:
+                        self.crit.out_layers[i].weight = nn.Parameter(
+                            self.word_emb.emb_layers[i].tt_matrix.full()[:n_token]
+                        )
 
             if tie_projs:
                 for i, tie_proj in enumerate(tie_projs):
@@ -661,7 +681,7 @@ class MemTransformerLM(nn.Module):
 
         hids = []
         if self.attn_type == 0: # default
-            pos_seq = torch.arange(klen-1, -1, -1.0, device=word_emb.device, 
+            pos_seq = torch.arange(klen-1, -1, -1.0, device=word_emb.device,
                                    dtype=word_emb.dtype)
             if self.clamp_len > 0:
                 pos_seq.clamp_(max=self.clamp_len)
@@ -797,10 +817,10 @@ if __name__ == '__main__':
         for d_embed in [200, 100]:
             model = MemTransformerLM(args.n_token, args.n_layer, args.n_head,
                             args.d_model, args.d_head, args.d_inner, args.dropout,
-                            dropatt=args.dropout, tie_weight=True, 
-                            d_embed=d_embed, div_val=div_val, 
+                            dropatt=args.dropout, tie_weight=True,
+                            d_embed=d_embed, div_val=div_val,
                             tie_projs=tie_projs, pre_lnorm=True,
-                            tgt_len=tgt_len, ext_len=ext_len, mem_len=mem_len, 
+                            tgt_len=tgt_len, ext_len=ext_len, mem_len=mem_len,
                             cutoffs=cutoffs, attn_type=0).to(device)
 
             print(sum(p.numel() for p in model.parameters()))

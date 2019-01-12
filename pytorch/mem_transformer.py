@@ -453,7 +453,7 @@ class AdaptiveEmbedding(nn.Module):
             if tt_emb > 0:
                 self.emb_layers.append(
                     t3.TTEmbedding(
-                        voc_size=n_tokens,
+                        voc_size=n_token,
                         emb_size=d_embed,
                         auto_shapes=True,
                         d=tt_emb,

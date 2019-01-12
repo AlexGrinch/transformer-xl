@@ -141,11 +141,10 @@ parser.add_argument('--static-loss-scale', type=float, default=1,
 parser.add_argument('--dynamic-loss-scale', action='store_true',
                     help='Use dynamic loss scaling.  If supplied, this argument'
                     ' supersedes --static-loss-scale.')
-
-parser.add_argument('tt_emb', type=int, default=3,
-    help='TT embedding partition, if < 0 TT disabled')
-parser.add_argument('tt_rank', type=int, default=32,
-    help='TT embedding ranks')
+parser.add_argument('--tt_emb', type=int, default=-1,
+                    help='TT embedding partition, if < 0 TT disabled')
+parser.add_argument('--tt_rank', type=int, default=32,
+                    help='TT embedding ranks')
 
 args = parser.parse_args()
 args.tied = not args.not_tied

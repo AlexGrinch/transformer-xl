@@ -5,13 +5,14 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import t3nsor as t3
 
 CUDA_MAJOR = int(torch.version.cuda.split('.')[0])
 CUDA_MINOR = int(torch.version.cuda.split('.')[1])
 
 class ProjectedAdaptiveLogSoftmax(nn.Module):
     def __init__(self, n_token, d_embed, d_proj, cutoffs, div_val=1,
-                 keep_order=False):
+                 keep_order=False, tt_softmax=-1, tt_rank=32):
         super(ProjectedAdaptiveLogSoftmax, self).__init__()
 
         self.n_token = n_token
@@ -25,6 +26,9 @@ class ProjectedAdaptiveLogSoftmax(nn.Module):
         self.shortlist_size = self.cutoffs[0]
         self.n_clusters = len(self.cutoffs) - 1
         self.head_size = self.shortlist_size + self.n_clusters
+        
+        self.tt_softmax = tt_softmax
+        self.tt_rank = tt_rank
 
         if self.n_clusters > 0:
             self.cluster_weight = nn.Parameter(torch.zeros(self.n_clusters, self.d_embed))
@@ -41,8 +45,31 @@ class ProjectedAdaptiveLogSoftmax(nn.Module):
                     )
                 else:
                     self.out_projs.append(None)
-
-            self.out_layers.append(nn.Linear(d_embed, n_token))
+            if tt_softmax > 0:
+                # TT-Linear
+                self.out_layers.append(
+                    t3.TTEmbedding(
+                        voc_size=n_token,
+                        emb_size=d_embed,
+                        auto_shapes=True,
+                        d=tt_softmax,
+                        tt_rank=tt_rank,
+                        padding_idx=None
+                    )
+                )
+                # TT-bias
+                self.out_layers.append(
+                    t3.TTEmbedding(
+                        voc_size=n_token,
+                        emb_size=1,
+                        auto_shapes=True,
+                        d=tt_softmax,
+                        tt_rank=tt_rank,
+                        padding_idx=None
+                    )
+                )
+            else:
+                self.out_layers.append(nn.Linear(d_embed, n_token))
         else:
             for i in range(len(self.cutoffs)):
                 l_idx, r_idx = self.cutoff_ends[i], self.cutoff_ends[i+1]
@@ -60,13 +87,8 @@ class ProjectedAdaptiveLogSoftmax(nn.Module):
         if proj is None:
             logit = F.linear(hidden, weight, bias=bias)
         else:
-            # if CUDA_MAJOR <= 9 and CUDA_MINOR <= 1:
             proj_hid = F.linear(hidden, proj.t().contiguous())
             logit = F.linear(proj_hid, weight, bias=bias)
-            # else:
-            #     logit = torch.einsum('bd,de,ev->bv', (hidden, proj, weight.t()))
-            #     if bias is not None:
-            #         logit = logit + bias
 
         return logit
 
@@ -91,8 +113,13 @@ class ProjectedAdaptiveLogSoftmax(nn.Module):
             for i in range(len(self.cutoffs)):
                 if self.div_val == 1:
                     l_idx, r_idx = self.cutoff_ends[i], self.cutoff_ends[i + 1]
-                    weight_i = self.out_layers[0].weight[l_idx:r_idx]
-                    bias_i = self.out_layers[0].bias[l_idx:r_idx]
+                    if self.tt_softmax < 0:
+                        weight_i = self.out_layers[0].weight[l_idx:r_idx]
+                        bias_i = self.out_layers[0].bias[l_idx:r_idx]
+                    else:
+                        indices = torch.arange(l_idx, r_idx).to(hidden.device)
+                        weight_i = self.out_layers[0].forward(indices)
+                        bias_i = self.out_layers[1].forward(indices)[:,0]
                 else:
                     weight_i = self.out_layers[i].weight
                     bias_i = self.out_layers[i].bias

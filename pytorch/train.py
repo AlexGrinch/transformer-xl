@@ -142,9 +142,11 @@ parser.add_argument('--dynamic-loss-scale', action='store_true',
                     help='Use dynamic loss scaling.  If supplied, this argument'
                     ' supersedes --static-loss-scale.')
 parser.add_argument('--tt_emb', type=int, default=-1,
-                    help='TT embedding partition, if < 0 TT disabled')
+                    help='TT-embedding partition, if < 0 TT-embedding is disabled')
+parser.add_argument('--tt_softmax', type=int, default=-1,
+                    help='TT-softmax partition, if < 0 TT-softmax is disabled')
 parser.add_argument('--tt_rank', type=int, default=32,
-                    help='TT embedding ranks')
+                    help='TT-embedding/softmax ranks')
 
 args = parser.parse_args()
 args.tied = not args.not_tied
@@ -286,7 +288,7 @@ else:
         ext_len=args.ext_len, mem_len=args.mem_len, cutoffs=cutoffs,
         same_length=args.same_length, attn_type=args.attn_type,
         clamp_len=args.clamp_len, sample_softmax=args.sample_softmax,
-        tt_emb=args.tt_emb, tt_rank=args.tt_rank
+        tt_emb=args.tt_emb, tt_softmax=args.tt_softmax, tt_rank=args.tt_rank
     )
     model.apply(weights_init)
     model.word_emb.apply(weights_init) # ensure embedding init is not overridden by out_layer in case of weight sharing

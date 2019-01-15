@@ -512,7 +512,7 @@ class MemTransformerLM(nn.Module):
                  tgt_len=None, ext_len=None, mem_len=None,
                  cutoffs=[], adapt_inp=False,
                  same_length=False, attn_type=0, clamp_len=-1,
-                 sample_softmax=-1, tt_emb=-1, tt_rank=32):
+                 sample_softmax=-1, tt_emb=-1, tt_softmax=-1, tt_rank=32):
         super(MemTransformerLM, self).__init__()
         self.n_token = n_token
 
@@ -574,18 +574,16 @@ class MemTransformerLM(nn.Module):
 
         # use adaptive softmax (including standard softmax)
         else:
-            self.crit = ProjectedAdaptiveLogSoftmax(n_token, d_embed, d_model,
-                                                    cutoffs, div_val=div_val)
+            self.crit = ProjectedAdaptiveLogSoftmax(
+                n_token, d_embed, d_model, cutoffs,
+                div_val=div_val, tt_softmax=tt_softmax, tt_rank=tt_rank)
 
             if tie_weight:
-                for i in range(len(self.crit.out_layers)):
-                    try:
+                if tt_emb > 0 and tt_softmax > 0:
+                    self.crit.out_layers[0] = self.word_emb.emb_layers[0]
+                else:
+                    for i in range(len(self.crit.out_layers)):
                         self.crit.out_layers[i].weight = self.word_emb.emb_layers[i].weight
-                    except:
-                        self.crit.out_layers[i].weight = nn.Parameter(
-                            self.word_emb.emb_layers[i].tt_matrix.full()[:n_token]
-                        )
-
             if tie_projs:
                 for i, tie_proj in enumerate(tie_projs):
                     if tie_proj and div_val == 1 and d_model != d_embed:

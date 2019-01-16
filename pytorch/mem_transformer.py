@@ -465,8 +465,8 @@ class AdaptiveEmbedding(nn.Module):
                 self.emb_layers.append(
                     nn.Embedding(n_token, d_embed, sparse=sample_softmax>0)
                 )
-                for param in self.emb_layers[-1].parameters():
-                    param.requires_grad = False
+                #for param in self.emb_layers[-1].parameters():
+                #    param.requires_grad = False
             if d_proj != d_embed:
                 self.emb_projs.append(nn.Parameter(torch.Tensor(d_proj, d_embed)))
         else:

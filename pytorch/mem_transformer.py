@@ -660,7 +660,7 @@ class MemTransformerLM(nn.Module):
     def _forward(self, dec_inp, mems=None):
         qlen, bsz = dec_inp.size()
 
-        word_emb = self.word_emb(dec_inp)
+        word_emb = self.word_emb(dec_inp).detach()
 
         mlen = mems[0].size(0) if mems is not None else 0
         klen = mlen + qlen

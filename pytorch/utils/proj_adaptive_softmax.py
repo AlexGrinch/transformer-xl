@@ -70,6 +70,8 @@ class ProjectedAdaptiveLogSoftmax(nn.Module):
                 )
             else:
                 self.out_layers.append(nn.Linear(d_embed, n_token))
+                for param in self.out_layers[-1].parameters():
+                    param.requires_grad = False
         else:
             for i in range(len(self.cutoffs)):
                 l_idx, r_idx = self.cutoff_ends[i], self.cutoff_ends[i+1]

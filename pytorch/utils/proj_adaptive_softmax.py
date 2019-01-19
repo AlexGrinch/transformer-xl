@@ -81,7 +81,31 @@ class ProjectedAdaptiveLogSoftmax(nn.Module):
                     nn.Parameter(torch.Tensor(d_proj, d_emb_i))
                 )
 
-                self.out_layers.append(nn.Linear(d_emb_i, r_idx-l_idx))
+                if tt_softmax > 0:
+                    # TT-Linear
+                    self.out_layers.append(
+                        t3.TTEmbedding(
+                            voc_size=r_idx-l_idx,
+                            emb_size=d_emb_i,
+                            auto_shapes=True,
+                            d=tt_softmax,
+                            tt_rank=tt_rank,
+                            padding_idx=None
+                        )
+                    )
+                    # TT-bias
+                    self.out_layers.append(
+                        t3.TTEmbedding(
+                            voc_size=r_idx-l_idx,
+                            emb_size=1,
+                            auto_shapes=True,
+                            d=tt_softmax,
+                            tt_rank=tt_rank,
+                            padding_idx=None
+                        )
+                    )
+                else:
+                    self.out_layers.append(nn.Linear(d_emb_i, r_idx-l_idx))
 
         self.keep_order = keep_order
 
@@ -113,8 +137,8 @@ class ProjectedAdaptiveLogSoftmax(nn.Module):
             # construct weights and biases
             weights, biases = [], []
             for i in range(len(self.cutoffs)):
+                l_idx, r_idx = self.cutoff_ends[i], self.cutoff_ends[i + 1]
                 if self.div_val == 1:
-                    l_idx, r_idx = self.cutoff_ends[i], self.cutoff_ends[i + 1]
                     if self.tt_softmax < 0:
                         weight_i = self.out_layers[0].weight[l_idx:r_idx]
                         bias_i = self.out_layers[0].bias[l_idx:r_idx]
@@ -123,8 +147,13 @@ class ProjectedAdaptiveLogSoftmax(nn.Module):
                         weight_i = self.out_layers[0].forward(indices)
                         bias_i = self.out_layers[1].forward(indices)[:,0]
                 else:
-                    weight_i = self.out_layers[i].weight
-                    bias_i = self.out_layers[i].bias
+                    if self.tt_softmax < 0:
+                        weight_i = self.out_layers[i].weight
+                        bias_i = self.out_layers[i].bias
+                    else:
+                        indices = torch.arange(r_idx-l_idx).to(hidden.device)
+                        weight_i = self.out_layers[2*i].forward(indices)
+                        bias_i = self.out_layers[2*i+1].forward(indices)[:,0]
 
                 if i == 0:
                     weight_i = torch.cat(

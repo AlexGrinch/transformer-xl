@@ -449,6 +449,7 @@ class AdaptiveEmbedding(nn.Module):
 
         self.emb_layers = nn.ModuleList()
         self.emb_projs = nn.ParameterList()
+        print (f"DIV_VAL: {div_val}, TT_EMB: {tt_emb}")
         if div_val == 1:
             if tt_emb > 0:
                 self.emb_layers.append(

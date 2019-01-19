@@ -485,7 +485,7 @@ class AdaptiveEmbedding(nn.Module):
                             padding_idx=None
                         )
                     )
-                print (self.emb_layers[-1])
+                    print (self.emb_layers[-1])
                 else:
                     self.emb_layers.append(nn.Embedding(r_idx-l_idx, d_emb_i))
                 self.emb_projs.append(nn.Parameter(torch.Tensor(d_proj, d_emb_i)))

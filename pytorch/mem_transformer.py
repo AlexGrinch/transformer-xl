@@ -538,6 +538,8 @@ class MemTransformerLM(nn.Module):
         self.d_model = d_model
         self.n_head = n_head
         self.d_head = d_head
+        
+        print (f"TensorTrainEmbedding: {tt_emb}, DivideValue: {div_val}")
 
         self.word_emb = AdaptiveEmbedding(
             n_token, d_embed, d_model, cutoffs,

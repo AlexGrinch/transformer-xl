@@ -12,12 +12,14 @@ CUDA_MINOR = int(torch.version.cuda.split('.')[1])
 
 class ProjectedAdaptiveLogSoftmax(nn.Module):
     def __init__(self, n_token, d_embed, d_proj, cutoffs, div_val=1,
-                 keep_order=False, tt_softmax=-1, tt_rank=32):
+                 keep_order=False, tt_softmax=-1, tt_rank=32,
+                 random_softmax=False, softmax_coef=1.0):
         super(ProjectedAdaptiveLogSoftmax, self).__init__()
 
         self.n_token = n_token
         self.d_embed = d_embed
         self.d_proj = d_proj
+        self.softmax_coef = softmax_coef
 
         self.cutoffs = cutoffs + [n_token]
         self.cutoff_ends = [0] + self.cutoffs
@@ -70,8 +72,9 @@ class ProjectedAdaptiveLogSoftmax(nn.Module):
                 )
             else:
                 self.out_layers.append(nn.Linear(d_embed, n_token, bias=False))
-                for param in self.out_layers[-1].parameters():
-                    param.requires_grad = False
+                if random_softmax:
+                    for param in self.out_layers[-1].parameters():
+                        param.requires_grad = False
         else:
             for i in range(len(self.cutoffs)):
                 l_idx, r_idx = self.cutoff_ends[i], self.cutoff_ends[i+1]
@@ -116,7 +119,7 @@ class ProjectedAdaptiveLogSoftmax(nn.Module):
             proj_hid = F.linear(hidden, proj.t().contiguous())
             logit = F.linear(proj_hid, weight, bias=bias)
 
-        return logit
+        return logit * self.softmax_coef
 
     def forward(self, hidden, target, keep_order=False):
         '''

@@ -147,6 +147,12 @@ parser.add_argument('--tt_softmax', type=int, default=-1,
                     help='TT-softmax partition, if < 0 TT-softmax is disabled')
 parser.add_argument('--tt_rank', type=int, default=32,
                     help='TT-embedding/softmax ranks')
+parser.add_argument('--random_emb', action='store_true',
+                    help='random embedding')
+parser.add_argument('--random_softmax', action='store_true',
+                    help='random softmax')
+parser.add_argument('--softmax_coef', type=float, default=1.0,
+                    help='softmax layer multiplier')
 
 args = parser.parse_args()
 args.tied = not args.not_tied
@@ -280,6 +286,14 @@ if args.restart:
     model.apply(update_dropout)
     model.apply(update_dropatt)
 else:
+    random_emb = False
+    if args.random_emb:
+        random_emb = True
+
+    random_softmax = False
+    if args.random_softmax:
+        random_softmax = True
+
     model = MemTransformerLM(
         ntokens, args.n_layer, args.n_head, args.d_model,
         args.d_head, args.d_inner, args.dropout, args.dropatt,
@@ -288,7 +302,8 @@ else:
         ext_len=args.ext_len, mem_len=args.mem_len, cutoffs=cutoffs,
         same_length=args.same_length, attn_type=args.attn_type,
         clamp_len=args.clamp_len, sample_softmax=args.sample_softmax,
-        tt_emb=args.tt_emb, tt_softmax=args.tt_softmax, tt_rank=args.tt_rank
+        tt_emb=args.tt_emb, tt_softmax=args.tt_softmax, tt_rank=args.tt_rank,
+        random_emb=random_emb, random_softmax=random_softmax, softmax_coef=args.softmax_coef
     )
     model.apply(weights_init)
     model.word_emb.apply(weights_init) # ensure embedding init is not overridden by out_layer in case of weight sharing

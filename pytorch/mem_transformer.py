@@ -433,7 +433,7 @@ class RelPartialLearnableDecoderLayer(nn.Module):
 
 class AdaptiveEmbedding(nn.Module):
     def __init__(self, n_token, d_embed, d_proj, cutoffs, div_val=1,
-                 sample_softmax=False, tt_emb=-1, tt_rank=32):
+                 sample_softmax=False, tt_emb=-1, tt_rank=32, random_emb=False):
         super(AdaptiveEmbedding, self).__init__()
 
         self.n_token = n_token
@@ -462,14 +462,17 @@ class AdaptiveEmbedding(nn.Module):
                     )
                 )
             else:
-                A = (np.random.random((n_token, d_embed) )-0.5)
-                A = A / np.linalg.norm(A, axis=1)[:, None]
                 self.emb_layers.append(
                     nn.Embedding(n_token, d_embed, sparse=sample_softmax>0)
                 )
-                self.emb_layers[-1].weight = nn.Parameter(torch.Tensor(A))
-                for param in self.emb_layers[-1].parameters():
-                    param.requires_grad = False
+
+                if random_emb:
+                    A = (np.random.random((n_token, d_embed) )-0.5)
+                    A = A / np.linalg.norm(A, axis=1)[:, None]
+                    self.emb_layers[-1].weight = nn.Parameter(torch.Tensor(A))
+                    for param in self.emb_layers[-1].parameters():
+                        param.requires_grad = False
+
             if d_proj != d_embed:
                 self.emb_projs.append(nn.Parameter(torch.Tensor(d_proj, d_embed)))
         else:
@@ -531,7 +534,8 @@ class MemTransformerLM(nn.Module):
                  tgt_len=None, ext_len=None, mem_len=None,
                  cutoffs=[], adapt_inp=False,
                  same_length=False, attn_type=0, clamp_len=-1,
-                 sample_softmax=-1, tt_emb=-1, tt_softmax=-1, tt_rank=32):
+                 sample_softmax=-1, tt_emb=-1, tt_softmax=-1, tt_rank=32,
+                 random_emb=False, random_softmax=False, softmax_coef=1.0):
         super(MemTransformerLM, self).__init__()
         self.n_token = n_token
 
@@ -543,7 +547,8 @@ class MemTransformerLM(nn.Module):
 
         self.word_emb = AdaptiveEmbedding(
             n_token, d_embed, d_model, cutoffs,
-            div_val=div_val, tt_emb=tt_emb, tt_rank=tt_rank
+            div_val=div_val, tt_emb=tt_emb, tt_rank=tt_rank,
+            random_emb=random_emb
         )
 
         self.drop = nn.Dropout(dropout)
@@ -595,7 +600,8 @@ class MemTransformerLM(nn.Module):
         else:
             self.crit = ProjectedAdaptiveLogSoftmax(
                 n_token, d_embed, d_model, cutoffs,
-                div_val=div_val, tt_softmax=tt_softmax, tt_rank=tt_rank)
+                div_val=div_val, tt_softmax=tt_softmax, tt_rank=tt_rank,
+                random_softmax=random_softmax, softmax_coef=softmax_coef)
 
             if tie_weight:
                 if tt_emb > 0 and tt_softmax > 0:

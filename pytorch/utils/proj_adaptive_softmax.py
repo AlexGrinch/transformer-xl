@@ -32,7 +32,7 @@ class ProjectedAdaptiveLogSoftmax(nn.Module):
 
         if self.n_clusters > 0:
             self.cluster_weight = nn.Parameter(torch.zeros(self.n_clusters, self.d_embed))
-            self.cluster_bias = nn.Parameter(torch.zeros(self.n_clusters))
+            #self.cluster_bias = nn.Parameter(torch.zeros(self.n_clusters))
 
         self.out_layers = nn.ModuleList()
         self.out_projs = nn.ParameterList()
@@ -69,9 +69,9 @@ class ProjectedAdaptiveLogSoftmax(nn.Module):
                     )
                 )
             else:
-                self.out_layers.append(nn.Linear(d_embed, n_token))
-                #for param in self.out_layers[-1].parameters():
-                #    param.requires_grad = False
+                self.out_layers.append(nn.Linear(d_embed, n_token, bias=False))
+                for param in self.out_layers[-1].parameters():
+                    param.requires_grad = False
         else:
             for i in range(len(self.cutoffs)):
                 l_idx, r_idx = self.cutoff_ends[i], self.cutoff_ends[i+1]
@@ -141,32 +141,33 @@ class ProjectedAdaptiveLogSoftmax(nn.Module):
                 if self.div_val == 1:
                     if self.tt_softmax < 0:
                         weight_i = self.out_layers[0].weight[l_idx:r_idx]
-                        bias_i = self.out_layers[0].bias[l_idx:r_idx]
+                        #bias_i = self.out_layers[0].bias[l_idx:r_idx]
                     else:
                         indices = torch.arange(l_idx, r_idx).to(hidden.device)
                         weight_i = self.out_layers[0].forward(indices)
-                        bias_i = self.out_layers[1].forward(indices)[:,0]
+                        #bias_i = self.out_layers[1].forward(indices)[:,0]
                 else:
                     if self.tt_softmax < 0:
                         weight_i = self.out_layers[i].weight
-                        bias_i = self.out_layers[i].bias
+                        #bias_i = self.out_layers[i].bias
                     else:
                         indices = torch.arange(r_idx-l_idx).to(hidden.device)
                         weight_i = self.out_layers[2*i].forward(indices)
-                        bias_i = self.out_layers[2*i+1].forward(indices)[:,0]
+                        #bias_i = self.out_layers[2*i+1].forward(indices)[:,0]
 
                 if i == 0:
                     weight_i = torch.cat(
                         [weight_i, self.cluster_weight], dim=0)
-                    bias_i = torch.cat(
-                        [bias_i, self.cluster_bias], dim=0)
+                    #bias_i = torch.cat(
+                    #    [bias_i, self.cluster_bias], dim=0)
 
                 weights.append(weight_i)
-                biases.append(bias_i)
+                #biases.append(bias_i)
 
-            head_weight, head_bias, head_proj = weights[0], biases[0], self.out_projs[0]
+            #head_weight, head_bias, head_proj = weights[0], biases[0], self.out_projs[0]
+            head_weight, head_proj = weights[0], self.out_projs[0]
 
-            head_logit = self._compute_logit(hidden, head_weight, head_bias, head_proj)
+            head_logit = self._compute_logit(hidden, head_weight, None, head_proj)
             head_logprob = F.log_softmax(head_logit, dim=1)
 
             nll = torch.zeros_like(target,
@@ -189,11 +190,12 @@ class ProjectedAdaptiveLogSoftmax(nn.Module):
                 if i == 0:
                     logprob_i = head_logprob_i.gather(1, target_i[:,None]).squeeze(1)
                 else:
-                    weight_i, bias_i, proj_i = weights[i], biases[i], self.out_projs[i]
+                    #weight_i, bias_i, proj_i = weights[i], biases[i], self.out_projs[i]
+                    weight_i, proj_i = weights[i], self.out_projs[i]
 
                     hidden_i = hidden.index_select(0, indices_i)
 
-                    tail_logit_i = self._compute_logit(hidden_i, weight_i, bias_i, proj_i)
+                    tail_logit_i = self._compute_logit(hidden_i, weight_i, None, proj_i)
                     tail_logprob_i = F.log_softmax(tail_logit_i, dim=1)
 
                     logprob_i = head_logprob_i[:, -i] \

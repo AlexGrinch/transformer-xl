@@ -449,7 +449,6 @@ class AdaptiveEmbedding(nn.Module):
 
         self.emb_layers = nn.ModuleList()
         self.emb_projs = nn.ParameterList()
-        print (f"DIV_VAL: {div_val}, TT_EMB: {tt_emb}")
         if div_val == 1:
             if tt_emb > 0:
                 self.emb_layers.append(
@@ -463,11 +462,14 @@ class AdaptiveEmbedding(nn.Module):
                     )
                 )
             else:
+                A = (np.random.random((n_token, d_embed) )-0.5)
+                A = A / np.linalg.norm(A, axis=1)[:, None]
                 self.emb_layers.append(
                     nn.Embedding(n_token, d_embed, sparse=sample_softmax>0)
                 )
-                #for param in self.emb_layers[-1].parameters():
-                #    param.requires_grad = False
+                self.emb_layers[-1].weight = nn.Parameter(torch.Tensor(A))
+                for param in self.emb_layers[-1].parameters():
+                    param.requires_grad = False
             if d_proj != d_embed:
                 self.emb_projs.append(nn.Parameter(torch.Tensor(d_proj, d_embed)))
         else:
@@ -538,8 +540,6 @@ class MemTransformerLM(nn.Module):
         self.d_model = d_model
         self.n_head = n_head
         self.d_head = d_head
-        
-        print (f"TensorTrainEmbedding: {tt_emb}, DivideValue: {div_val}")
 
         self.word_emb = AdaptiveEmbedding(
             n_token, d_embed, d_model, cutoffs,

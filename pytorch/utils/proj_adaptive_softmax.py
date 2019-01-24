@@ -113,11 +113,14 @@ class ProjectedAdaptiveLogSoftmax(nn.Module):
         self.keep_order = keep_order
 
     def _compute_logit(self, hidden, weight, bias, proj):
+        weight = F.normalize(weight, p=2, dim=-1)
+        #hidden = F.normalize(hidden, p=2, dim=-1)
         if proj is None:
             logit = F.linear(hidden, weight, bias=bias)
         else:
             proj_hid = F.linear(hidden, proj.t().contiguous())
             logit = F.linear(proj_hid, weight, bias=bias)
+        #logit = F.normalize(logit, p=2, dim=-1) 
 
         return logit * self.softmax_coef
 

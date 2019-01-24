@@ -686,6 +686,7 @@ class MemTransformerLM(nn.Module):
         qlen, bsz = dec_inp.size()
 
         word_emb = self.word_emb(dec_inp)#.detach()
+        word_emb = F.normalize(word_emb, p=2, dim=-1)
 
         mlen = mems[0].size(0) if mems is not None else 0
         klen = mlen + qlen
